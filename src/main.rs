@@ -48,7 +48,8 @@ fn main() {
 
     // Write the tree representation of files matching allowed extensions
     let allowed_extensions: Vec<&str> = config.allowed_extensions.iter().map(|s| s.as_str()).collect();
-    let tree_output = generate_tree_output(&current_dir, &allowed_extensions);
+    let deny_directories: Vec<&str> = config.deny_dirs.iter().map(|s| s.as_str()).collect();
+    let tree_output = generate_tree_output(&current_dir, &allowed_extensions, &deny_directories);
     writeln!(prompt_file, "{}", tree_output).expect("Failed to write tree output");
 
     // Write the contents of each file with comments removed
@@ -77,20 +78,20 @@ fn main() {
     println!("Prompt file generated: {}", prompt_path.display());
 }
 
-fn generate_tree_output(dir: &Path, allowed_extensions: &[&str]) -> String {
+fn generate_tree_output(dir: &Path, allowed_extensions: &[&str], deny_dirs: &[&str]) -> String {
     let mut result = String::new();
     if dir.is_dir() {
         // Start the tree with the root directory
         result.push_str(&format!("{}\n", dir.display()));
         // Recursively build the tree
-        if let Err(e) = visit_dirs(dir, "", allowed_extensions, &mut result) {
+        if let Err(e) = visit_dirs(dir, "", allowed_extensions, deny_dirs, &mut result) {
             eprintln!("Error: {}", e);
         }
     }
     result
 }
 
-fn visit_dirs(dir: &Path, prefix: &str, allowed_extensions: &[&str], result: &mut String) -> io::Result<()> {
+fn visit_dirs(dir: &Path, prefix: &str, allowed_extensions: &[&str], deny_dirs: &[&str], result: &mut String) -> io::Result<()> {
     let mut entries = fs::read_dir(dir)?
         .map(|res| res.map(|e| e))
         .collect::<Result<Vec<_>, io::Error>>()?;
@@ -105,10 +106,13 @@ fn visit_dirs(dir: &Path, prefix: &str, allowed_extensions: &[&str], result: &mu
         let new_prefix = if i == count - 1 { "└── " } else { "├── " };
 
         if path.is_dir() {
+            if deny_dirs.iter().any(|&e| file_name == e) {
+                continue
+            }
             // Directory: recursively visit it
             result.push_str(&format!("{}{}{}", prefix, new_prefix, file_name));
             result.push('\n');
-            visit_dirs(&path, &format!("{}    ", prefix), allowed_extensions, result)?;
+            visit_dirs(&path, &format!("{}    ", prefix), allowed_extensions, deny_dirs, result)?;
         } else if let Some(ext) = path.extension() {
             // File: add it if it has an allowed extension
             println!("path extension: {}", ext.to_str().unwrap());
