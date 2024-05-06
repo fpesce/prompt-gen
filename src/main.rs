@@ -49,23 +49,8 @@ fn main() {
     // Write the tree representation of files matching allowed extensions
     let allowed_extensions: Vec<&str> = config.allowed_extensions.iter().map(|s| s.as_str()).collect();
     let deny_directories: Vec<&str> = config.deny_dirs.iter().map(|s| s.as_str()).collect();
-    let tree_output = generate_tree_output(&current_dir, &allowed_extensions, &deny_directories);
+    let tree_output = generate_tree_output(&current_dir, &allowed_extensions, &deny_directories, &mut prompt_file);
     writeln!(prompt_file, "{}", tree_output).expect("Failed to write tree output");
-
-    // Write the contents of each file with comments removed
-    for entry in fs::read_dir(&current_dir).expect("Failed to read directory") {
-        let entry = entry.expect("Failed to get directory entry");
-        let path = entry.path();
-        if path.is_file() {
-            let extension = path.extension().and_then(|ext| ext.to_str());
-            if extension.map_or(false, |ext| allowed_extensions.contains(&ext)) {
-                let file_content = fs::read_to_string(&path).expect("Failed to read file");
-                let without_comments = remove_comments(&file_content, extension.unwrap());
-                writeln!(prompt_file, "File: {}", path.display()).expect("Failed to write file path");
-                writeln!(prompt_file, "{}", without_comments).expect("Failed to write file content");
-            }
-        }
-    }
 
     // Write the specific goal
     writeln!(prompt_file, "Specific Goal: {}", goal).expect("Failed to write specific goal");
@@ -78,20 +63,20 @@ fn main() {
     println!("Prompt file generated: {}", prompt_path.display());
 }
 
-fn generate_tree_output(dir: &Path, allowed_extensions: &[&str], deny_dirs: &[&str]) -> String {
+fn generate_tree_output(dir: &Path, allowed_extensions: &[&str], deny_dirs: &[&str], prompt_file: &mut fs::File) -> String {
     let mut result = String::new();
     if dir.is_dir() {
         // Start the tree with the root directory
         result.push_str(&format!("{}\n", dir.display()));
         // Recursively build the tree
-        if let Err(e) = visit_dirs(dir, "", allowed_extensions, deny_dirs, &mut result) {
+        if let Err(e) = visit_dirs(dir, "", allowed_extensions, deny_dirs, prompt_file, &mut result) {
             eprintln!("Error: {}", e);
         }
     }
     result
 }
 
-fn visit_dirs(dir: &Path, prefix: &str, allowed_extensions: &[&str], deny_dirs: &[&str], result: &mut String) -> io::Result<()> {
+fn visit_dirs(dir: &Path, prefix: &str, allowed_extensions: &[&str], deny_dirs: &[&str], prompt_file: &mut fs::File, result: &mut String) -> io::Result<()> {
     let mut entries = fs::read_dir(dir)?
         .map(|res| res.map(|e| e))
         .collect::<Result<Vec<_>, io::Error>>()?;
@@ -107,18 +92,23 @@ fn visit_dirs(dir: &Path, prefix: &str, allowed_extensions: &[&str], deny_dirs: 
 
         if path.is_dir() {
             if deny_dirs.iter().any(|&e| file_name == e) {
-                continue
+                continue;
             }
             // Directory: recursively visit it
             result.push_str(&format!("{}{}{}", prefix, new_prefix, file_name));
             result.push('\n');
-            visit_dirs(&path, &format!("{}    ", prefix), allowed_extensions, deny_dirs, result)?;
+            visit_dirs(&path, &format!("{}    ", prefix), allowed_extensions, deny_dirs, prompt_file, result)?;
         } else if let Some(ext) = path.extension() {
             // File: add it if it has an allowed extension
-            println!("path extension: {}", ext.to_str().unwrap());
             if allowed_extensions.iter().any(|&e| ext.to_str() == Some(e)) {
                 result.push_str(&format!("{}{}{}", prefix, new_prefix, file_name));
                 result.push('\n');
+
+                // Read the file content and remove comments
+                let file_content = fs::read_to_string(&path)?;
+                let without_comments = remove_comments(&file_content, ext.to_str().unwrap());
+                writeln!(prompt_file, "File: {}", path.display())?;
+                writeln!(prompt_file, "{}", without_comments)?;
             }
         }
     }
