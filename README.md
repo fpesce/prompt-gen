@@ -22,7 +22,7 @@
 To install `prompt-gen`, ensure you have Rust installed on your system. Then, clone the repository and build the project:
 
 ```bash
-git clone https://github.com/yourusername/prompt-gen.git
+git clone https://github.com/fpesce/prompt-gen.git
 cd prompt-gen
 cargo build --release
 ```
