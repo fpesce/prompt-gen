@@ -104,11 +104,16 @@ fn visit_dirs(dir: &Path, prefix: &str, allowed_extensions: &[&str], deny_dirs: 
                 result.push_str(&format!("{}{}{}", prefix, new_prefix, file_name));
                 result.push('\n');
 
-                // Read the file content and remove comments
+// Read the file content and remove comments
                 let file_content = fs::read_to_string(&path)?;
                 let without_comments = remove_comments(&file_content, ext.to_str().unwrap());
-                writeln!(prompt_file, "File: {}", path.display())?;
-                writeln!(prompt_file, "{}", without_comments)?;
+                let cleaned_content = remove_empty_lines(&without_comments);
+
+                let relative_path = path.strip_prefix(&env::current_dir().unwrap()).unwrap();
+                writeln!(prompt_file, "File: {}", relative_path.display())?;
+                writeln!(prompt_file, "```")?;
+                writeln!(prompt_file, "{}", cleaned_content)?;
+                writeln!(prompt_file, "```")?;
             }
         }
     }
@@ -139,4 +144,12 @@ fn remove_comments(file_content: &str, extension: &str) -> String {
             .collect::<String>(),
         _ => file_content.to_string(), // If the extension is not recognized, return the original content.
     }
+}
+
+fn remove_empty_lines(input: &str) -> String {
+    input
+        .lines()
+        .filter(|line| !line.trim().is_empty())  // Filter out empty or whitespace-only lines
+        .collect::<Vec<&str>>()  // Collect lines back into a Vec
+        .join("\n")  // Join them into a single string with newline characters
 }
